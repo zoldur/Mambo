@@ -2,8 +2,9 @@
 
 DEFAULTMAMBOCOINUSER="mambocoin"
 DEFAULTMAMBOCOINPORT=43210
-DEFAULTCONFFILE="MamboCoind.conf"
+DEFAULTCONFFILE="MamboCoin.conf"
 DEFAULTMAMBOBINARY="mambocoind"
+TMP_FOLDER=$(mktemp -d)
 
 function compile_error() {
 if [ "$?" -gt "0" ];
@@ -33,7 +34,7 @@ fi
 
 function prepare_system() {
 
-echo -e "Prepare the system to install Mambocoin master node."
+echo -e "Prepare the system to install MamboCoin Master Node."
 apt-get update >/dev/null 2>&1
 apt install -y software-properties-common >/dev/null 2>&1
 echo -e "${GREEN}Adding bitcoin PPA repository"
@@ -42,7 +43,7 @@ echo -e "Installing required packages, it may take some time to finish.${NC}"
 apt-get update >/dev/null 2>&1
 apt-get install -y make software-properties-common build-essential libtool autoconf libssl-dev libboost-dev libboost-chrono-dev \
 libboost-filesystem-dev libboost-program-options-dev libboost-system-dev libboost-test-dev libboost-thread-dev sudo automake git \
-wget curl libdb4.8-dev bsdmainutils libdb4.8++-dev libminiupnpc-dev
+wget curl libdb4.8-dev bsdmainutils libdb4.8++-dev libminiupnpc-dev pwgen
 clear
 if [ "$?" -gt "0" ];
   then
@@ -53,7 +54,7 @@ if [ "$?" -gt "0" ];
     echo "apt-get update"
     echo "apt install -y make build-essential libtool software-properties-common autoconf libssl-dev libboost-dev libboost-chrono-dev libboost-filesystem-dev \
 libboost-program-options-dev libboost-system-dev libboost-test-dev libboost-thread-dev sudo automake git curl libdb4.8-dev \
-bsdmainutils libdb4.8++-dev libminiupnpc-dev" 
+bsdmainutils libdb4.8++-dev libminiupnpc-dev pwgen" 
  exit 1
 fi
 
@@ -76,11 +77,7 @@ clear
 
 function compile_mambocoin() {
 
-read -p "Mambocoin user: " -i $DEFAULTMAMBOCOINUSER -e MAMBOCOINUSER
-: ${MAMBOCOINUSER:=$DEFAULTMAMBOCOINUSER}
-useradd -m $MAMBOCOINUSER >/dev/null
-MAMBOCOINHOME=$(sudo -H -u $MAMBOCOINUSER bash -c 'echo $HOME')
-
+cd $TMP_FOLDER
 echo -e "Clone git repo and compile it. This may take some time. Press a key to continue."
 read -n 1 -s -r -p ""
 git clone https://github.com/MamboCoin/MamboCoin
@@ -100,15 +97,15 @@ if [ "$FWSTATUS" = "active" ]; then
 fi
 }
 
-function systemd_mambo() {
+function systemd_mambocoin() {
 
 cat << EOF > /etc/systemd/system/$DEFAULTMAMBOBINARY.service
 [Unit]
 Description=Mambocoin service
 After=network.target
 [Service]
-ExecStart=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
-ExecStop=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER stop
+ExecStart=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/$DEFAULTCONFFILE -datadir=$MAMBOCOINFOLDER
+ExecStop=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/$DEFAULTCONFFILE -datadir=$MAMBOCOINFOLDER stop
 Restart=on-abort
 User=$MAMBOCOINUSER
 Group=$MAMBOCOINUSER
@@ -128,15 +125,29 @@ checks
 prepare_system
 compile_mambocoin
 
-exit
+echo -e "${GREEN}Prepare to configure and start MamboCoin Masternode.${NC}"
 
-echo -e "${GREEN}Prepare to configure and start Mambocoin Masternode.${NC}"
+read -p "Mambocoin user: " -i $DEFAULTMAMBOCOINUSER -e MAMBOCOINUSER
+: ${MAMBOCOINUSER:=$DEFAULTMAMBOCOINUSER}
+useradd -m $MAMBOCOINUSER >/dev/null
+MAMBOCOINHOME=$(sudo -H -u $MAMBOCOINUSER bash -c 'echo $HOME')
+
 DEFAULTMAMBOCOINFOLDER="$MAMBOCOINHOME/.MamboCoin"
 read -p "Configuration folder: " -i $DEFAULTMAMBOCOINFOLDER -e MAMBOCOINFOLDER
 : ${MAMBOCOINFOLDER:=$DEFAULTMAMBOCOINFOLDER}
 mkdir -p $MAMBOCOINFOLDER
-chown -R $MAMBOCOINUSER $MAMBOCOINFOLDER >/dev/null
 
+RPCUSER=$(pwgen -s 8 1)
+RPCPASSWORD=$(pwgen -s 15 1)
+cat << EOF > $MAMBOCOIN/$DEFAULTCONFFILE
+rpcuser=$RPCUSER
+rpcpassword=$RPCPASSWORD
+rpcallowip=127.0.0.1
+listen=1
+server=1
+daemon=1
+EOF
+chown -R $MAMBOCOINUSER: $MAMBOCOINFOLDER >/dev/null
 
 read -p "MAMBOCOIN Port: " -i $DEFAULTMAMBOCOINPORT -e MAMBOCOINPORT
 : ${MAMBOCOINPORT:=$DEFAULTMAMBOCOINPORT}
@@ -144,13 +155,13 @@ read -p "MAMBOCOIN Port: " -i $DEFAULTMAMBOCOINPORT -e MAMBOCOINPORT
 echo -e "Enter your ${RED}Masternode Private Key${NC}. Leave it blank to generate a new ${RED}Masternode Private Key${NC} for you:"
 read -e MAMBOCOINKEY
 if [[ -z "$MAMBOCOINKEY" ]]; then
- sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
+ sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/$DEFAULTCONFFILE -datadir=$MAMBOCOINFOLDER
  sleep 5
  if [ -z "$(pidof $DEFAULTMAMBOBINARY)" ]; then
    echo -e "${RED}Mambocoind server couldn't start. Check /var/log/syslog for errors.{$NC}"
    exit 1
  fi
- MAMBOCOINKEY=$(sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER masternode genkey)
+ MAMBOCOINKEY=$(sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/$DEFAULTCONFFILE -datadir=$MAMBOCOINFOLDER masternode genkey)
  kill $(pidof $DEFAULTMAMBOBINARY)
 fi
 
@@ -168,7 +179,7 @@ EOF
 chown -R $MAMBOCOINUSER: $MAMBOCOINFOLDER >/dev/null
 
 
-systemd_mambo
+systemd_mambocoin
 enable_firewall
 
 
@@ -189,7 +200,7 @@ fi
 echo
 echo -e "======================================================================================================================="
 echo -e "Mambocoin Masternode is up and running as user ${GREEN}$MAMBOCOINUSER${NC} and it is listening on port ${GREEN}$MAMBOCOINPORT${NC}." 
-echo -e "Configuration file is: ${RED}$MAMBOCOINFOLDER/mambocoin.conf${NC}"
+echo -e "Configuration file is: ${RED}$MAMBOCOINFOLDER/$DEFAULTCONFFILE${NC}"
 echo -e "VPS_IP:PORT ${RED}$NODEIP:$MAMBOCOINPORT${NC}"
 echo -e "MASTERNODE PRIVATEKEY is: ${RED}$MAMBOCOINKEY${NC}"
 echo -e "========================================================================================================================"
