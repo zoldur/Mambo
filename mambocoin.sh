@@ -2,6 +2,8 @@
 
 DEFAULTMAMBOCOINUSER="mambocoin"
 DEFAULTMAMBOCOINPORT=43210
+DEFAULTCONFFILE="MamboCoind.conf"
+DEFAULTMAMBOBINARY="mambocoind"
 
 function compile_error() {
 if [ "$?" -gt "0" ];
@@ -23,7 +25,7 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-if [ -n "$(pidof mambocoind)" ]; then
+if [ -n "$(pidof $DEFAULTMAMBOBINARY)" ]; then
   echo -e "${GREEN}Mambocoind already running.${NC}"
   exit 1
 fi
@@ -40,7 +42,7 @@ echo -e "Installing required packages, it may take some time to finish.${NC}"
 apt-get update >/dev/null 2>&1
 apt-get install -y make software-properties-common build-essential libtool autoconf libssl-dev libboost-dev libboost-chrono-dev \
 libboost-filesystem-dev libboost-program-options-dev libboost-system-dev libboost-test-dev libboost-thread-dev sudo automake git \
-wget pwgen curl libdb4.8-dev bsdmainutils libdb4.8++-dev libminiupnpc-dev
+wget curl libdb4.8-dev bsdmainutils libdb4.8++-dev libminiupnpc-dev
 clear
 if [ "$?" -gt "0" ];
   then
@@ -50,7 +52,7 @@ if [ "$?" -gt "0" ];
     echo "apt-add-repository -y ppa:bitcoin/bitcoin"
     echo "apt-get update"
     echo "apt install -y make build-essential libtool software-properties-common autoconf libssl-dev libboost-dev libboost-chrono-dev libboost-filesystem-dev \
-libboost-program-options-dev libboost-system-dev libboost-test-dev libboost-thread-dev sudo automake git pwgen curl libdb4.8-dev \
+libboost-program-options-dev libboost-system-dev libboost-test-dev libboost-thread-dev sudo automake git curl libdb4.8-dev \
 bsdmainutils libdb4.8++-dev libminiupnpc-dev" 
  exit 1
 fi
@@ -86,7 +88,7 @@ cd MamboCoin/src/
 make -f makefile.unix
 compile_error MamboCoin
 
-cp -a mambocoind /usr/local/bin
+cp -a $DEFAULTMAMBOBINARY /usr/local/bin
 clear
 }
 
@@ -100,13 +102,13 @@ fi
 
 function systemd_mambo() {
 
-cat << EOF > /etc/systemd/system/mambocoind.service
+cat << EOF > /etc/systemd/system/$DEFAULTMAMBOBINARY.service
 [Unit]
 Description=Mambocoin service
 After=network.target
 [Service]
-ExecStart=/usr/local/bin/mambocoind -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
-ExecStop=/usr/local/bin/mambocoind -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER stop
+ExecStart=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
+ExecStop=/usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER stop
 Restart=on-abort
 User=$MAMBOCOINUSER
 Group=$MAMBOCOINUSER
@@ -126,23 +128,13 @@ checks
 prepare_system
 compile_mambocoin
 
+exit
 
 echo -e "${GREEN}Prepare to configure and start Mambocoin Masternode.${NC}"
 DEFAULTMAMBOCOINFOLDER="$MAMBOCOINHOME/.MamboCoin"
 read -p "Configuration folder: " -i $DEFAULTMAMBOCOINFOLDER -e MAMBOCOINFOLDER
 : ${MAMBOCOINFOLDER:=$DEFAULTMAMBOCOINFOLDER}
 mkdir -p $MAMBOCOINFOLDER
-
-RPCUSER=$(pwgen -s 8 1)
-RPCPASSWORD=$(pwgen -s 15 1)
-cat << EOF > $MAMBOCOINFOLDER/MamboCoin.conf
-rpcuser=$RPCUSER
-rpcpassword=$RPCPASSWORD
-rpcallowip=127.0.0.1
-listen=1
-server=1
-daemon=1
-EOF
 chown -R $MAMBOCOINUSER $MAMBOCOINFOLDER >/dev/null
 
 
@@ -152,19 +144,19 @@ read -p "MAMBOCOIN Port: " -i $DEFAULTMAMBOCOINPORT -e MAMBOCOINPORT
 echo -e "Enter your ${RED}Masternode Private Key${NC}. Leave it blank to generate a new ${RED}Masternode Private Key${NC} for you:"
 read -e MAMBOCOINKEY
 if [[ -z "$MAMBOCOINKEY" ]]; then
- sudo -u $MAMBOCOINUSER /usr/local/bin/mambocoind -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
+ sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER
  sleep 5
- if [ -z "$(pidof mambocoind)" ]; then
+ if [ -z "$(pidof $DEFAULTMAMBOBINARY)" ]; then
    echo -e "${RED}Mambocoind server couldn't start. Check /var/log/syslog for errors.{$NC}"
    exit 1
  fi
- MAMBOCOINKEY=$(sudo -u $MAMBOCOINUSER /usr/local/bin/mambocoind -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER masternode genkey)
- kill $(pidof mambocoind)
+ MAMBOCOINKEY=$(sudo -u $MAMBOCOINUSER /usr/local/bin/$DEFAULTMAMBOBINARY -conf=$MAMBOCOINFOLDER/mambocoin.conf -datadir=$MAMBOCOINFOLDER masternode genkey)
+ kill $(pidof $DEFAULTMAMBOBINARY)
 fi
 
-sed -i 's/daemon=1/daemon=0/' $MAMBOCOINFOLDER/MamboCoin.conf
+sed -i 's/daemon=1/daemon=0/' $MAMBOCOINFOLDER/$DEFAULTCONFFILE
 NODEIP=$(curl -s4 icanhazip.com)
-cat << EOF >> $MAMBOCOINFOLDER/MamboCoin.conf
+cat << EOF >> $MAMBOCOINFOLDER/$DEFAULTCONFFILE
 logtimestamps=1
 maxconnections=256
 masternode=1
@@ -182,14 +174,14 @@ enable_firewall
 
 systemctl daemon-reload
 sleep 3
-systemctl start mambocoind.service
-systemctl enable mambocoind.service
+systemctl start $DEFAULTMAMBOBINARY.service
+systemctl enable $DEFAULTMAMBOBINARY.service
 
 
-if [[ -z $(pidof mambocoind) ]]; then
+if [[ -z $(pidof $DEFAULTMAMBOBINARY) ]]; then
   echo -e "${RED}Mambocoind is not running${NC}, please investigate. You should start by running the following commands as root:"
-  echo "systemctl start mambocoind.service"
-  echo "systemctl status mambocoind.service"
+  echo "systemctl start $DEFAULTMAMBOBINARY.service"
+  echo "systemctl status $DEFAULTMAMBOBINARY.service"
   echo "less /var/log/syslog"
   exit 1 
 fi
