@@ -53,7 +53,7 @@ systemctl stop mambocoind #To stop cropcpoind service
   
 Any donation is highly appreciated  
 
-**MAMBO**: mSdfTLoh1R8P9UCGfGB1WWMCBrMg5any6k 
+**MAMBO**: mSdfTLoh1R8P9UCGfGB1WWMCBrMg5any6k   
 **BTC**: 1BzeQ12m4zYaQKqysGNVbQv1taN7qgS8gY  
 **ETH**: 0x39d10fe57611c564abc255ffd7e984dc97e9bd6d  
 
