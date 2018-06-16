@@ -166,7 +166,7 @@ if [[ -z "$MAMBOCOINKEY" ]]; then
 fi
 
 sed -i 's/daemon=1/daemon=0/' $MAMBOCOINFOLDER/$DEFAULTCONFFILE
-NODEIP=$(curl -s4 icanhazip.com)
+NODEIP=$(curl -s4 api.ipify.org)
 cat << EOF >> $MAMBOCOINFOLDER/$DEFAULTCONFFILE
 logtimestamps=1
 maxconnections=256
